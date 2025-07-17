@@ -12,7 +12,7 @@ def load_data(file_path):
     try:
         df = pd.read_excel(file_path)
         # 필수 컬럼 확인
-        required_columns = ['번호', '수정내용', '척도', '카테고리', '관련 교과군']
+        required_columns = ['번호', '수정내용', '척도', '카테고리', '관련교과군']
         if not all(col in df.columns for col in required_columns):
             st.error(f"엑셀 파일에 필수 컬럼({required_columns})이 모두 포함되어 있는지 확인해주세요.")
             return None
