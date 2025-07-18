@@ -10,14 +10,9 @@ def load_data(file_path):
     """엑셀 파일을 로드하고 데이터를 정리하는 함수"""
     try:
         df = pd.read_excel(file_path)
-        # 모든 컬럼명의 앞뒤 공백을 제거
         df.columns = df.columns.str.strip()
-        
-        # --- 핵심 수정 부분 ---
-        # '관련교과군' 열의 데이터가 글자(str)일 경우에만 공백을 제거하도록 수정
         if '관련교과군' in df.columns:
             df['관련교과군'] = df['관련교과군'].apply(lambda x: x.strip() if isinstance(x, str) else x)
-            
         return df
     except Exception as e:
         st.error(f"엑셀 파일 로드 중 오류: {e}")
@@ -85,9 +80,23 @@ def display_results():
         scores = {subject: 0 for subject in df['관련교과군'].dropna().unique()}
 
         for q_id, answer in st.session_state.responses.items():
-            q_data = df.loc[df['번호'] == q_id].iloc[0]
-            score = (6 - answer) if q_data['척도'] == '역' else answer
-            scores[q_data['관련교과군']] += score
+            # 특정 번호에 해당하는 모든 행을 찾음
+            q_data_rows = df.loc[df['번호'] == q_id]
+            
+            # 해당하는 행이 없을 경우 건너뜀
+            if q_data_rows.empty:
+                continue
+            
+            # --- 핵심 수정 부분: 여러 행이 찾아져도 항상 첫 번째 행을 기준으로 삼음 ---
+            q_data = q_data_rows.iloc[0]
+            
+            scale = q_data['척도']
+            subject = q_data['관련교과군']
+
+            score_to_add = (6 - answer) if scale == '역' else answer
+            
+            if pd.notna(subject) and subject in scores:
+                scores[subject] += score_to_add
 
         final_scores = {s: v for s, v in scores.items() if v > 0}
         sorted_scores = sorted(final_scores.items(), key=lambda item: item[1], reverse=True)
