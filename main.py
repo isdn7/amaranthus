@@ -27,13 +27,13 @@ if df is None or not all(col in df.columns for col in required_columns):
     st.error("엑셀 파일을 확인해주세요. 필수 컬럼이 모두 존재해야 합니다.")
     st.stop()
 
-# 교과군(섹션) 순서 정의 및 생성
+# --- 로직 변경: '카테고리'를 기준으로 섹션(교과군) 순서 정의 및 생성 ---
 SECTION_ORDER = ['기초교과군', '제2외국어군', '과학군', '사회군']
-section_list = [s for s in SECTION_ORDER if s in df['관련교과군'].unique()]
+section_list = [s for s in SECTION_ORDER if s in df['카테고리'].unique()]
 
 # 생성된 섹션이 없을 경우 안내 후 중지
 if not section_list:
-    st.error("엑셀 파일의 '관련교과군' 열에 '기초교과군', '과학군' 등의 내용이 올바르게 입력되었는지 확인해주세요.")
+    st.error("엑셀 파일의 '카테고리' 열에 '기초교과군', '과학군' 등의 내용이 올바르게 입력되었는지 확인해주세요.")
     st.stop()
 
 # --- 세션 상태 초기화 ---
@@ -50,7 +50,8 @@ def display_survey():
     """현재 섹션의 설문을 표시하는 함수"""
     section_index = st.session_state.current_section
     current_section_name = section_list[section_index]
-    questions_df = df[df['관련교과군'] == current_section_name]
+    # 로직 변경: '카테고리' 열을 기준으로 현재 섹션의 문항 필터링
+    questions_df = df[df['카테고리'] == current_section_name]
     
     st.progress((section_index + 1) / len(section_list), text=f"{section_index + 1}/{len(section_list)} 단계 진행 중")
     
@@ -73,12 +74,17 @@ def display_survey():
 def display_results():
     """결과를 계산하고 표시하는 함수"""
     with st.spinner('결과를 분석하는 중입니다...'):
-        scores = {subject: 0 for subject in df['카테고리'].unique()}
+        # 로직 변경: '관련교과군' 열을 기준으로 점수판 생성 (예: 국어, 수학, 물리...)
+        scores = {subject: 0 for subject in df['관련교과군'].unique()}
 
         for q_id, answer in st.session_state.responses.items():
             q_data = df.loc[df['번호'] == q_id].iloc[0]
-            score = (6 - answer) if q_data['척도'] == '역' else answer
-            scores[q_data['카테고리']] += score
+            # 로직 변경: '관련교과군'의 과목에 점수 추가
+            subject = q_data['관련교과군']
+            scale = q_data['척도']
+            
+            score_to_add = (6 - answer) if scale == '역' else answer
+            scores[subject] += score_to_add
 
         final_scores = {s: v for s, v in scores.items() if v > 0}
         sorted_scores = sorted(final_scores.items(), key=lambda item: item[1], reverse=True)
@@ -87,7 +93,7 @@ def display_results():
     st.header("📈 최종 분석 결과")
 
     if sorted_scores:
-        st.success(f"### 🥇 당신의 최고 선호 과목 유형은 **{sorted_scores[0][0]}** 입니다!")
+        st.success(f"### 🥇 당신의 최고 선호 과목은 **{sorted_scores[0][0]}** 입니다!")
         st.subheader("과목별 선호도 점수")
         st.bar_chart(pd.DataFrame.from_dict(final_scores, orient='index', columns=['점수']))
     else:
