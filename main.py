@@ -2,28 +2,32 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 페이지 기본 설정
 st.set_page_config(page_title="과목 유형 검사", page_icon="📚", layout="centered")
 
 @st.cache_data
 def load_data(file_path):
-    """엑셀 파일을 로드하고 데이터를 정리하는 함수"""
+    """CSV 파일을 로드하고 데이터를 정리하는 함수"""
     try:
-        df = pd.read_excel(file_path)
+        # --- 핵심 수정: read_csv로 변경 ---
+        df = pd.read_csv(file_path)
+        
         df.columns = df.columns.str.strip()
         if '관련교과군' in df.columns:
             df['관련교과군'] = df['관련교과군'].apply(lambda x: x.strip() if isinstance(x, str) else x)
         return df
     except Exception as e:
-        st.error(f"엑셀 파일 로드 중 오류: {e}")
+        st.error(f"CSV 파일 로드 중 오류: {e}")
         return None
 
-# 데이터 로드 및 필수 컬럼 확인
-df = load_data('data.xlsx')
+# --- 핵심 수정: 파일명을 data.csv로 변경 ---
+df = load_data('data.csv')
 required_columns = ['번호', '수정내용', '척도', '카테고리', '관련교과군']
+
 if df is None or not all(col in df.columns for col in required_columns):
-    st.error("엑셀 파일의 컬럼명을 확인해주세요.")
+    st.error("CSV 파일의 컬럼명을 확인해주세요.")
     st.stop()
+
+# --- 이하 코드는 모두 동일합니다 ---
 
 # 과목 순서 정의
 SUBJECT_ORDER = [
@@ -31,14 +35,12 @@ SUBJECT_ORDER = [
     '물리', '화학', '생명과학', '지구과학',
     '일반사회', '역사', '윤리', '지리'
 ]
-
 # 섹션(카테고리) 순서 정의 및 생성
 SECTION_ORDER = ['기초교과군', '제2외국어군', '과학군', '사회군']
 section_list = [s for s in SECTION_ORDER if s in df['카테고리'].unique()]
 if not section_list:
-    st.error("엑셀 파일의 '카테고리' 열 내용을 확인해주세요.")
+    st.error("CSV 파일의 '카테고리' 열 내용을 확인해주세요.")
     st.stop()
-
 # 세션 상태 초기화
 if 'current_section' not in st.session_state:
     st.session_state.current_section = 0
@@ -49,7 +51,6 @@ st.title("📚 나의 과목 선호 유형 검사")
 st.write("---")
 
 def display_survey():
-    """현재 섹션의 설문을 표시하는 함수"""
     section_index = st.session_state.current_section
     current_section_name = section_list[section_index]
     questions_df = df[df['카테고리'] == current_section_name]
@@ -73,28 +74,17 @@ def display_survey():
             st.rerun()
 
 def display_results():
-    """결과를 계산하고 표시하는 함수"""
     import plotly.express as px
-    
     with st.spinner('결과를 분석하는 중입니다...'):
         scores = {subject: 0 for subject in df['관련교과군'].dropna().unique()}
-
         for q_id, answer in st.session_state.responses.items():
-            # 특정 번호에 해당하는 모든 행을 찾음
             q_data_rows = df.loc[df['번호'] == q_id]
-            
-            # 해당하는 행이 없을 경우 건너뜀
             if q_data_rows.empty:
                 continue
-            
-            # --- 핵심 수정 부분: 여러 행이 찾아져도 항상 첫 번째 행을 기준으로 삼음 ---
             q_data = q_data_rows.iloc[0]
-            
             scale = q_data['척도']
             subject = q_data['관련교과군']
-
             score_to_add = (6 - answer) if scale == '역' else answer
-            
             if pd.notna(subject) and subject in scores:
                 scores[subject] += score_to_add
 
@@ -109,7 +99,6 @@ def display_results():
         top_8_subjects = sorted_scores[:8]
         top_subjects_text = ", ".join([f"**{i+1}위**: {subject}" for i, (subject, score) in enumerate(top_8_subjects)])
         st.success(top_subjects_text)
-
         st.subheader("과목별 선호도 점수")
         
         scores_series = pd.Series(final_scores).reindex(SUBJECT_ORDER).fillna(0)
@@ -127,7 +116,6 @@ def display_results():
         st.session_state.responses = {}
         st.rerun()
 
-# --- 메인 로직 실행 ---
 if st.session_state.current_section < len(section_list):
     display_survey()
 else:
