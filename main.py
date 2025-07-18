@@ -1,16 +1,22 @@
 import streamlit as st
 import pandas as pd
-# 상단에 있던 import plotly.express as px 라인은 제거합니다.
+import plotly.express as px
 
 # 페이지 기본 설정
 st.set_page_config(page_title="과목 유형 검사", page_icon="📚", layout="centered")
 
 @st.cache_data
 def load_data(file_path):
-    """엑셀 파일을 로드하고 컬럼명 공백을 제거하는 함수"""
+    """엑셀 파일을 로드하고 데이터를 정리하는 함수"""
     try:
         df = pd.read_excel(file_path)
+        # 1. 모든 컬럼명의 앞뒤 공백을 제거
         df.columns = df.columns.str.strip()
+        
+        # 2. '관련교과군' 열의 각 과목명 데이터의 앞뒤 공백을 제거 (핵심 수정 부분)
+        if '관련교과군' in df.columns:
+            df['관련교과군'] = df['관련교과군'].str.strip()
+            
         return df
     except Exception as e:
         st.error(f"엑셀 파일 로드 중 오류: {e}")
@@ -72,7 +78,6 @@ def display_survey():
 
 def display_results():
     """결과를 계산하고 표시하는 함수"""
-    # ===== 핵심 수정 부분: 함수 안에서 직접 import =====
     import plotly.express as px
     
     with st.spinner('결과를 분석하는 중입니다...'):
