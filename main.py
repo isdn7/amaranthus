@@ -10,12 +10,13 @@ def load_data(file_path):
     """엑셀 파일을 로드하고 데이터를 정리하는 함수"""
     try:
         df = pd.read_excel(file_path)
-        # 1. 모든 컬럼명의 앞뒤 공백을 제거
+        # 모든 컬럼명의 앞뒤 공백을 제거
         df.columns = df.columns.str.strip()
         
-        # 2. '관련교과군' 열의 각 과목명 데이터의 앞뒤 공백을 제거 (핵심 수정 부분)
+        # --- 핵심 수정 부분 ---
+        # '관련교과군' 열의 데이터가 글자(str)일 경우에만 공백을 제거하도록 수정
         if '관련교과군' in df.columns:
-            df['관련교과군'] = df['관련교과군'].str.strip()
+            df['관련교과군'] = df['관련교과군'].apply(lambda x: x.strip() if isinstance(x, str) else x)
             
         return df
     except Exception as e:
@@ -81,7 +82,7 @@ def display_results():
     import plotly.express as px
     
     with st.spinner('결과를 분석하는 중입니다...'):
-        scores = {subject: 0 for subject in df['관련교과군'].unique()}
+        scores = {subject: 0 for subject in df['관련교과군'].dropna().unique()}
 
         for q_id, answer in st.session_state.responses.items():
             q_data = df.loc[df['번호'] == q_id].iloc[0]
