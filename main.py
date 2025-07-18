@@ -38,7 +38,7 @@ if df is not None:
 
 
 # 필수 컬럼명 정의 (엑셀 파일과 정확히 일치해야 함)
-required_columns = ['번호', '문항', '척도', '카테고리', '관련교과군']
+required_columns = ['번호', '수정내용', '척도', '카테고리', '관련교과군']
 
 # 데이터 또는 필수 컬럼이 없는 경우 앱 실행 중지
 if df is None or not all(col in df.columns for col in required_columns):
