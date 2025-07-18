@@ -9,15 +9,27 @@ def load_data(file_path):
     """CSV 파일을 로드하고 데이터를 정리하는 함수"""
     try:
         df = pd.read_csv(file_path, dtype={'번호': str})
+        
+        # 컬럼명 및 데이터 공백 제거
         df.columns = df.columns.str.strip()
         if '관련교과군' in df.columns:
             df['관련교과군'] = df['관련교과군'].apply(lambda x: x.strip() if isinstance(x, str) else x)
+
+        # --- 핵심 수정 부분: 축약된 과목명을 전체 이름으로 변경 ---
+        if '관련교과군' in df.columns:
+            name_map = {
+                '생명': '생명과학',
+                '지구': '지구과학',
+                '일사': '일반사회'
+            }
+            df['관련교과군'] = df['관련교과군'].replace(name_map)
+            
         return df
     except Exception as e:
         st.error(f"CSV 파일 로드 중 오류: {e}")
         return None
 
-# 데이터 로드
+# data.csv 파일을 읽도록 설정
 df = load_data('data.csv')
 required_columns = ['번호', '수정내용', '척도', '카테고리', '관련교과군']
 
@@ -25,27 +37,20 @@ if df is None or not all(col in df.columns for col in required_columns):
     st.error("CSV 파일의 컬럼명을 확인해주세요.")
     st.stop()
 
-# --- 1. 핵심 변경: 조회용 딕셔너리 생성 ---
-# DataFrame을 미리 파이썬 딕셔너리 형태로 가공하여 검색 속도와 안정성을 높임
-try:
-    df_for_lookup = df.astype({'번호': str})
-    question_lookup = {row['번호']: {'척도': row['척도'], '관련교과군': row['관련교과군']} for index, row in df_for_lookup.iterrows()}
-except KeyError:
-    st.error("딕셔너리를 만드는 중 '번호', '척도', '관련교과군' 컬럼을 찾지 못했습니다. 컬럼명을 다시 확인해주세요.")
-    st.stop()
-
-# --- 이하 코드 대부분 동일 ---
+# 과목 순서 정의
 SUBJECT_ORDER = [
     '국어', '수학', '영어', '독일어', '중국어', '일본어',
     '물리', '화학', '생명과학', '지구과학',
     '일반사회', '역사', '윤리', '지리'
 ]
+# 섹션(카테고리) 순서 정의 및 생성
 SECTION_ORDER = ['기초교과군', '제2외국어군', '과학군', '사회군']
 section_list = [s for s in SECTION_ORDER if s in df['카테고리'].unique()]
 if not section_list:
     st.error("CSV 파일의 '카테고리' 열 내용을 확인해주세요.")
     st.stop()
 
+# 세션 상태 초기화
 if 'current_section' not in st.session_state:
     st.session_state.current_section = 0
 if 'responses' not in st.session_state:
@@ -83,18 +88,22 @@ def display_results():
     import plotly.express as px
     with st.spinner('결과를 분석하는 중입니다...'):
         scores = {subject: 0 for subject in df['관련교과군'].dropna().unique()}
+        
+        df_results = df.astype({'번호': str})
 
-        # --- 2. 핵심 변경: 딕셔너리에서 직접 값을 찾아 점수 계산 ---
         for q_id, answer in st.session_state.responses.items():
-            if q_id in question_lookup:
-                q_data = question_lookup[q_id]
-                scale = q_data['척도']
-                subject = q_data['관련교과군']
-                
-                score_to_add = (6 - answer) if scale == '역' else answer
-                
-                if pd.notna(subject) and subject in scores:
-                    scores[subject] += score_to_add
+            q_data_rows = df_results.loc[df_results['번호'] == q_id]
+            
+            if q_data_rows.empty: continue
+            
+            q_data = q_data_rows.iloc[0]
+            scale = q_data['척도']
+            subject = q_data['관련교과군']
+            
+            score_to_add = (6 - answer) if scale == '역' else answer
+            
+            if pd.notna(subject) and subject in scores:
+                scores[subject] += score_to_add
 
         final_scores = {s: v for s, v in scores.items() if v > 0}
         sorted_scores = sorted(final_scores.items(), key=lambda item: item[1], reverse=True)
