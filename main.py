@@ -8,8 +8,8 @@ st.set_page_config(page_title="과목 유형 검사", page_icon="📚", layout="
 def load_data(file_path):
     """CSV 파일을 로드하고 데이터를 정리하는 함수"""
     try:
-        # --- 핵심 수정: read_csv로 변경 ---
-        df = pd.read_csv(file_path)
+        # '번호' 열을 문자열(str) 타입으로 강제해서 불러오기
+        df = pd.read_csv(file_path, dtype={'번호': str})
         
         df.columns = df.columns.str.strip()
         if '관련교과군' in df.columns:
@@ -19,7 +19,7 @@ def load_data(file_path):
         st.error(f"CSV 파일 로드 중 오류: {e}")
         return None
 
-# --- 핵심 수정: 파일명을 data.csv로 변경 ---
+# data.csv 파일을 읽도록 설정
 df = load_data('data.csv')
 required_columns = ['번호', '수정내용', '척도', '카테고리', '관련교과군']
 
@@ -27,21 +27,18 @@ if df is None or not all(col in df.columns for col in required_columns):
     st.error("CSV 파일의 컬럼명을 확인해주세요.")
     st.stop()
 
-# --- 이하 코드는 모두 동일합니다 ---
-
-# 과목 순서 정의
+# --- 이하 코드는 동일 ---
 SUBJECT_ORDER = [
     '국어', '수학', '영어', '독일어', '중국어', '일본어',
     '물리', '화학', '생명과학', '지구과학',
     '일반사회', '역사', '윤리', '지리'
 ]
-# 섹션(카테고리) 순서 정의 및 생성
 SECTION_ORDER = ['기초교과군', '제2외국어군', '과학군', '사회군']
 section_list = [s for s in SECTION_ORDER if s in df['카테고리'].unique()]
 if not section_list:
     st.error("CSV 파일의 '카테고리' 열 내용을 확인해주세요.")
     st.stop()
-# 세션 상태 초기화
+
 if 'current_section' not in st.session_state:
     st.session_state.current_section = 0
 if 'responses' not in st.session_state:
@@ -53,7 +50,9 @@ st.write("---")
 def display_survey():
     section_index = st.session_state.current_section
     current_section_name = section_list[section_index]
-    questions_df = df[df['카테고리'] == current_section_name]
+    
+    # '번호' 열의 타입을 문자열로 변환
+    questions_df = df[df['카테고리'] == current_section_name].astype({'번호': str})
     
     st.progress((section_index + 1) / len(section_list), text=f"{section_index + 1}/{len(section_list)} 단계 진행 중")
     
@@ -62,14 +61,16 @@ def display_survey():
         st.write("각 문항을 읽고 자신과 가장 가깝다고 생각하는 정도를 선택해주세요.")
         
         for _, row in questions_df.iterrows():
-            st.markdown(f"**{row['번호']}. {row['수정내용']}**")
-            st.radio("1(전혀 그렇지 않다) ~ 5(매우 그렇다)", [1, 2, 3, 4, 5], key=f"q_{row['번호']}", horizontal=True, label_visibility="collapsed")
+            q_id_str = str(row['번호'])
+            st.markdown(f"**{q_id_str}. {row['수정내용']}**")
+            st.radio("1(전혀 그렇지 않다) ~ 5(매우 그렇다)", [1, 2, 3, 4, 5], key=f"q_{q_id_str}", horizontal=True, label_visibility="collapsed")
         
         is_last_section = (section_index == len(section_list) - 1)
         button_label = "결과 분석하기" if is_last_section else "다음 섹션으로"
         if st.form_submit_button(button_label):
             for _, row in questions_df.iterrows():
-                st.session_state.responses[row['번호']] = st.session_state[f"q_{row['번호']}"]
+                q_id_str = str(row['번호'])
+                st.session_state.responses[q_id_str] = st.session_state[f"q_{q_id_str}"]
             st.session_state.current_section += 1
             st.rerun()
 
@@ -77,14 +78,20 @@ def display_results():
     import plotly.express as px
     with st.spinner('결과를 분석하는 중입니다...'):
         scores = {subject: 0 for subject in df['관련교과군'].dropna().unique()}
+        
+        # '번호' 열 타입을 문자열로 통일
+        df_results = df.astype({'번호': str})
+
         for q_id, answer in st.session_state.responses.items():
-            q_data_rows = df.loc[df['번호'] == q_id]
-            if q_data_rows.empty:
-                continue
+            q_data_rows = df_results.loc[df_results['번호'] == q_id]
+            
+            if q_data_rows.empty: continue
+            
             q_data = q_data_rows.iloc[0]
             scale = q_data['척도']
             subject = q_data['관련교과군']
             score_to_add = (6 - answer) if scale == '역' else answer
+            
             if pd.notna(subject) and subject in scores:
                 scores[subject] += score_to_add
 
