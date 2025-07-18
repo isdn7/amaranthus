@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px # plotly 라이브러리 불러오기
 
 # 페이지 기본 설정
 st.set_page_config(page_title="과목 유형 검사", page_icon="📚", layout="centered")
@@ -10,45 +9,40 @@ def load_data(file_path):
     """엑셀 파일을 로드하고 컬럼명 공백을 제거하는 함수"""
     try:
         df = pd.read_excel(file_path)
+        # 모든 컬럼명의 앞뒤 공백을 제거하여 안정성 확보
         df.columns = df.columns.str.strip()
         return df
     except Exception as e:
         st.error(f"엑셀 파일 로드 중 오류: {e}")
         return None
 
-# 데이터 로드 및 필수 컬럼 확인
+# 데이터 로드
 df = load_data('data.xlsx')
+
+# 필수 컬럼 리스트
 required_columns = ['번호', '수정내용', '척도', '카테고리', '관련교과군']
+
+# 데이터 로드 실패 또는 필수 컬럼 부재 시 앱 중지
 if df is None or not all(col in df.columns for col in required_columns):
-    st.error("엑셀 파일의 컬럼명을 확인해주세요.")
+    st.error("엑셀 파일을 확인해주세요. 필수 컬럼이 모두 존재해야 합니다.")
     st.stop()
 
-# --- 1. 과목 순서 정의 ---
-# 그래프에 표시될 과목 순서를 교과군별로 미리 정의
-SUBJECT_ORDER = [
-    # 기초교과군
-    '국어', '수학', '영어',
-    # 제2외국어군
-    '독일어', '중국어', '일본어',
-    # 과학군
-    '물리', '화학', '생명과학', '지구과학',
-    # 사회군
-    '일반사회', '역사', '윤리', '지리'
-]
-
-# 섹션(카테고리) 순서 정의 및 생성
+# --- 로직 변경: '카테고리'를 기준으로 섹션(교과군) 순서 정의 및 생성 ---
 SECTION_ORDER = ['기초교과군', '제2외국어군', '과학군', '사회군']
 section_list = [s for s in SECTION_ORDER if s in df['카테고리'].unique()]
+
+# 생성된 섹션이 없을 경우 안내 후 중지
 if not section_list:
-    st.error("엑셀 파일의 '카테고리' 열 내용을 확인해주세요.")
+    st.error("엑셀 파일의 '카테고리' 열에 '기초교과군', '과학군' 등의 내용이 올바르게 입력되었는지 확인해주세요.")
     st.stop()
 
-# 세션 상태 초기화
+# --- 세션 상태 초기화 ---
 if 'current_section' not in st.session_state:
     st.session_state.current_section = 0
 if 'responses' not in st.session_state:
     st.session_state.responses = {}
 
+# --- UI 및 로직 함수 ---
 st.title("📚 나의 과목 선호 유형 검사")
 st.write("---")
 
@@ -56,6 +50,7 @@ def display_survey():
     """현재 섹션의 설문을 표시하는 함수"""
     section_index = st.session_state.current_section
     current_section_name = section_list[section_index]
+    # 로직 변경: '카테고리' 열을 기준으로 현재 섹션의 문항 필터링
     questions_df = df[df['카테고리'] == current_section_name]
     
     st.progress((section_index + 1) / len(section_list), text=f"{section_index + 1}/{len(section_list)} 단계 진행 중")
@@ -79,12 +74,17 @@ def display_survey():
 def display_results():
     """결과를 계산하고 표시하는 함수"""
     with st.spinner('결과를 분석하는 중입니다...'):
+        # 로직 변경: '관련교과군' 열을 기준으로 점수판 생성 (예: 국어, 수학, 물리...)
         scores = {subject: 0 for subject in df['관련교과군'].unique()}
 
         for q_id, answer in st.session_state.responses.items():
             q_data = df.loc[df['번호'] == q_id].iloc[0]
-            score = (6 - answer) if q_data['척도'] == '역' else answer
-            scores[q_data['관련교과군']] += score
+            # 로직 변경: '관련교과군'의 과목에 점수 추가
+            subject = q_data['관련교과군']
+            scale = q_data['척도']
+            
+            score_to_add = (6 - answer) if scale == '역' else answer
+            scores[subject] += score_to_add
 
         final_scores = {s: v for s, v in scores.items() if v > 0}
         sorted_scores = sorted(final_scores.items(), key=lambda item: item[1], reverse=True)
@@ -93,27 +93,9 @@ def display_results():
     st.header("📈 최종 분석 결과")
 
     if sorted_scores:
-        # --- 3. 상위 8개 과목 표시 ---
-        st.subheader("💡 나의 상위 선호 과목 Top 8")
-        top_8_subjects = sorted_scores[:8]
-        # 순위를 매겨 보기 좋게 텍스트로 가공
-        top_subjects_text = ", ".join([f"**{i+1}위**: {subject}" for i, (subject, score) in enumerate(top_8_subjects)])
-        st.success(top_subjects_text)
-
+        st.success(f"### 🥇 당신의 최고 선호 과목은 **{sorted_scores[0][0]}** 입니다!")
         st.subheader("과목별 선호도 점수")
-        
-        # --- 2. 과목 순서 정렬 및 가로 쓰기를 위한 그래프 처리 ---
-        # pandas Series로 변환 후, 정의된 SUBJECT_ORDER 순서로 재정렬
-        scores_series = pd.Series(final_scores).reindex(SUBJECT_ORDER).fillna(0)
-        chart_df = scores_series.reset_index()
-        chart_df.columns = ['과목', '점수']
-
-        # Plotly로 막대그래프 생성
-        fig = px.bar(chart_df, x='과목', y='점수')
-        # x축 레이블을 항상 가로로 표시 (angle=0)
-        fig.update_xaxes(tickangle=0)
-        # 그래프를 컨테이너 너비에 맞게 표시
-        st.plotly_chart(fig, use_container_width=True)
+        st.bar_chart(pd.DataFrame.from_dict(final_scores, orient='index', columns=['점수']))
     else:
         st.warning("분석 결과가 없습니다.")
 
